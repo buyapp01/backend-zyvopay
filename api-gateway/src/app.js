@@ -1,11 +1,5 @@
 require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const helmet = require('helmet');
-const morgan = require('morgan');
-const rateLimit = require('express-rate-limit');
-const swaggerUi = require('swagger-ui-express');
-const YAML = require('yaml');
+const Fastify = require('fastify');
 const fs = require('fs');
 const path = require('path');
 
@@ -22,147 +16,208 @@ const documentsRoutes = require('./routes/documents');
 const backupsRoutes = require('./routes/backups');
 const webhooksRoutes = require('./routes/webhooks');
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8000;
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
-// ============================================================
-// Middlewares
-// ============================================================
-
-// Security
-app.use(helmet());
-
-// CORS
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
-  credentials: true,
-}));
-
-// Body parsing
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// Logging
-if (process.env.NODE_ENV !== 'test') {
-  app.use(morgan('combined'));
-}
-
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 60000,
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 60,
-  message: {
-    success: false,
-    error: {
-      code: 'RATE_LIMIT_EXCEEDED',
-      message: 'Too many requests, please try again later',
-    },
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
+// Create Fastify instance
+const fastify = Fastify({
+  logger: process.env.NODE_ENV !== 'test' ? {
+    level: process.env.LOG_LEVEL || 'info',
+    transport: {
+      target: 'pino-pretty',
+      options: {
+        translateTime: 'HH:MM:ss Z',
+        ignore: 'pid,hostname'
+      }
+    }
+  } : false,
+  trustProxy: true,
+  ignoreTrailingSlash: true,
+  requestIdHeader: 'x-request-id',
 });
 
-app.use('/api/', limiter);
+// ============================================================
+// Register Plugins
+// ============================================================
+
+// Helmet for security headers
+fastify.register(require('@fastify/helmet'), {
+  contentSecurityPolicy: false,
+  global: true,
+});
+
+// CORS
+fastify.register(require('@fastify/cors'), {
+  origin: process.env.CORS_ORIGIN || '*',
+  credentials: true,
+});
+
+// Rate limiting
+fastify.register(require('@fastify/rate-limit'), {
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 60,
+  timeWindow: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 60000,
+  errorResponseBuilder: function (req, context) {
+    return {
+      success: false,
+      error: {
+        code: 'RATE_LIMIT_EXCEEDED',
+        message: 'Too many requests, please try again later',
+        retryAfter: context.after,
+      },
+      timestamp: new Date().toISOString(),
+    };
+  },
+});
+
+// Multipart support
+fastify.register(require('@fastify/multipart'), {
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB
+  },
+});
 
 // ============================================================
 // Swagger Documentation
 // ============================================================
 
-const swaggerDocument = YAML.parse(
-  fs.readFileSync(path.join(__dirname, 'swagger', 'openapi.yaml'), 'utf8')
+const swaggerSpec = JSON.parse(
+  fs.readFileSync(path.join(__dirname, 'swagger', 'openapi.json'), 'utf8')
 );
 
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
-  customCss: '.swagger-ui .topbar { display: none }',
-  customSiteTitle: 'ZyvoPay API Documentation',
-}));
+fastify.register(require('@fastify/swagger'), {
+  mode: 'static',
+  specification: {
+    document: swaggerSpec,
+  },
+});
+
+fastify.register(require('@fastify/swagger-ui'), {
+  routePrefix: '/api-docs',
+  uiConfig: {
+    docExpansion: 'list',
+    deepLinking: true,
+  },
+  staticCSP: true,
+  transformStaticCSP: (header) => header,
+  transformSpecification: (swaggerObject) => {
+    return swaggerObject;
+  },
+  transformSpecificationClone: true,
+});
 
 // ============================================================
-// Health Check
+// Health Check Routes
 // ============================================================
 
-app.get('/health', (req, res) => {
-  res.json({
+fastify.get('/health', async (request, reply) => {
+  return {
     success: true,
     service: 'zyvopay-api-gateway',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-  });
+  };
 });
 
-app.get('/', (req, res) => {
-  res.json({
+fastify.get('/', async (request, reply) => {
+  return {
     success: true,
     message: 'ZyvoPay API Gateway',
     version: '1.0.0',
     documentation: '/api-docs',
     timestamp: new Date().toISOString(),
-  });
+  };
 });
 
 // ============================================================
 // API Routes
 // ============================================================
 
-app.use('/api/auth', authRoutes);
-app.use('/api/subaccounts', subaccountsRoutes);
-app.use('/api/pix', pixRoutes);
-app.use('/api/ted', tedRoutes);
-app.use('/api/transactions', transactionsRoutes);
-app.use('/api/splits', splitsRoutes);
-app.use('/api/scheduled', scheduledRoutes);
-app.use('/api/recurring', recurringRoutes);
-app.use('/api/documents', documentsRoutes);
-app.use('/api/backups', backupsRoutes);
-app.use('/api/webhooks', webhooksRoutes);
+fastify.register(authRoutes, { prefix: '/api/auth' });
+fastify.register(subaccountsRoutes, { prefix: '/api/subaccounts' });
+fastify.register(pixRoutes, { prefix: '/api/pix' });
+fastify.register(tedRoutes, { prefix: '/api/ted' });
+fastify.register(transactionsRoutes, { prefix: '/api/transactions' });
+fastify.register(splitsRoutes, { prefix: '/api/splits' });
+fastify.register(scheduledRoutes, { prefix: '/api/scheduled' });
+fastify.register(recurringRoutes, { prefix: '/api/recurring' });
+fastify.register(documentsRoutes, { prefix: '/api/documents' });
+fastify.register(backupsRoutes, { prefix: '/api/backups' });
+fastify.register(webhooksRoutes, { prefix: '/api/webhooks' });
 
 // ============================================================
 // Error Handling
 // ============================================================
 
 // 404 Handler
-app.use((req, res) => {
-  res.status(404).json({
+fastify.setNotFoundHandler((request, reply) => {
+  reply.status(404).send({
     success: false,
     error: {
       code: 'NOT_FOUND',
       message: 'Endpoint not found',
-      path: req.path,
+      path: request.url,
     },
     timestamp: new Date().toISOString(),
   });
 });
 
 // Global Error Handler
-app.use((err, req, res, next) => {
-  console.error('Error:', err);
+fastify.setErrorHandler((error, request, reply) => {
+  fastify.log.error(error);
 
-  const statusCode = err.statusCode || 500;
-  const message = err.message || 'Internal server error';
+  const statusCode = error.statusCode || 500;
+  const message = error.message || 'Internal server error';
 
-  res.status(statusCode).json({
+  reply.status(statusCode).send({
     success: false,
     error: {
-      code: err.code || 'INTERNAL_ERROR',
+      code: error.code || 'INTERNAL_ERROR',
       message: message,
-      ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+      ...(process.env.NODE_ENV === 'development' && { stack: error.stack }),
     },
     timestamp: new Date().toISOString(),
   });
 });
 
 // ============================================================
+// Graceful Shutdown
+// ============================================================
+
+const closeGracefully = async (signal) => {
+  fastify.log.info(`Received signal to terminate: ${signal}`);
+  await fastify.close();
+  process.exit(0);
+};
+
+process.on('SIGINT', closeGracefully);
+process.on('SIGTERM', closeGracefully);
+
+// ============================================================
 // Start Server
 // ============================================================
 
+const start = async () => {
+  try {
+    await fastify.listen({
+      port: PORT,
+      host: '0.0.0.0'
+    });
+
+    if (process.env.NODE_ENV !== 'test') {
+      console.log(`\n🚀 ZyvoPay API Gateway running on port ${PORT}`);
+      console.log(`📚 API Documentation: http://localhost:${PORT}/api-docs`);
+      console.log(`💚 Health Check: http://localhost:${PORT}/health`);
+      console.log(`\n`);
+    }
+  } catch (err) {
+    fastify.log.error(err);
+    process.exit(1);
+  }
+};
+
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(PORT, () => {
-    console.log(`\n🚀 ZyvoPay API Gateway running on port ${PORT}`);
-    console.log(`📚 API Documentation: http://localhost:${PORT}/api-docs`);
-    console.log(`💚 Health Check: http://localhost:${PORT}/health`);
-    console.log(`\n`);
-  });
+  start();
 }
 
-module.exports = app;
+module.exports = fastify;

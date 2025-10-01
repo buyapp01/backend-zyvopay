@@ -1,155 +1,163 @@
-const express = require('express');
-const router = express.Router();
 const { authenticate, requireScope, supabase } = require('../middleware/auth');
 
-router.use(authenticate);
-
 /**
- * PATCH /api/webhooks/config
- * Update webhook configuration
+ * Webhooks routes
+ * Handles webhook configuration and delivery tracking
  */
-router.patch('/config', requireScope('write'), async (req, res) => {
-  try {
-    const { webhook_url, webhook_secret } = req.body;
+async function routes(fastify, options) {
+  /**
+   * PATCH /api/webhooks/config
+   * Update webhook configuration
+   */
+  fastify.patch('/config', {
+    onRequest: [authenticate, requireScope('write')]
+  }, async (request, reply) => {
+    try {
+      const { webhook_url, webhook_secret } = request.body;
 
-    if (!webhook_url) {
-      return res.status(400).json({
+      if (!webhook_url) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Missing required field: webhook_url',
+          },
+        });
+      }
+
+      const { data, error } = await supabase
+        .from('clients')
+        .update({
+          webhook_url,
+          webhook_secret: webhook_secret || null,
+        })
+        .eq('id', request.client.id)
+        .select()
+        .single();
+
+      if (error) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'UPDATE_WEBHOOK_CONFIG_ERROR',
+            message: error.message,
+          },
+        });
+      }
+
+      return {
+        success: true,
+        data: {
+          webhook_url: data.webhook_url,
+          webhook_secret: data.webhook_secret ? '***' : null,
+        },
+        message: 'Webhook configuration updated successfully',
+      };
+    } catch (error) {
+      console.error('Update webhook config error:', error);
+      return reply.status(500).send({
         success: false,
         error: {
-          code: 'VALIDATION_ERROR',
-          message: 'Missing required field: webhook_url',
+          code: 'INTERNAL_ERROR',
+          message: 'Failed to update webhook configuration',
         },
       });
     }
+  });
 
-    const { data, error } = await supabase
-      .from('clients')
-      .update({
-        webhook_url,
-        webhook_secret: webhook_secret || null,
-      })
-      .eq('id', req.client.id)
-      .select()
-      .single();
+  /**
+   * GET /api/webhooks/deliveries
+   * List webhook deliveries
+   */
+  fastify.get('/deliveries', {
+    onRequest: [authenticate, requireScope('read')]
+  }, async (request, reply) => {
+    try {
+      const { event_type, status, limit = 50, offset = 0 } = request.query;
 
-    if (error) {
-      return res.status(400).json({
+      let query = supabase
+        .from('webhook_deliveries')
+        .select('*', { count: 'exact' })
+        .eq('client_id', request.client.id)
+        .order('created_at', { ascending: false })
+        .range(offset, offset + parseInt(limit) - 1);
+
+      if (event_type) query = query.eq('event_type', event_type);
+      if (status) query = query.eq('status', status);
+
+      const { data, error, count } = await query;
+
+      if (error) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: 'FETCH_WEBHOOK_DELIVERIES_ERROR',
+            message: error.message,
+          },
+        });
+      }
+
+      return {
+        success: true,
+        data: data,
+        pagination: {
+          total: count,
+          limit: parseInt(limit),
+          offset: parseInt(offset),
+        },
+      };
+    } catch (error) {
+      console.error('List webhook deliveries error:', error);
+      return reply.status(500).send({
         success: false,
         error: {
-          code: 'UPDATE_WEBHOOK_CONFIG_ERROR',
-          message: error.message,
+          code: 'INTERNAL_ERROR',
+          message: 'Failed to list webhook deliveries',
         },
       });
     }
+  });
 
-    res.json({
-      success: true,
-      data: {
-        webhook_url: data.webhook_url,
-        webhook_secret: data.webhook_secret ? '***' : null,
-      },
-      message: 'Webhook configuration updated successfully',
-    });
-  } catch (error) {
-    console.error('Update webhook config error:', error);
-    res.status(500).json({
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'Failed to update webhook configuration',
-      },
-    });
-  }
-});
+  /**
+   * GET /api/webhooks/deliveries/:id
+   * Get webhook delivery details
+   */
+  fastify.get('/deliveries/:id', {
+    onRequest: [authenticate, requireScope('read')]
+  }, async (request, reply) => {
+    try {
+      const { data, error } = await supabase
+        .from('webhook_deliveries')
+        .select('*')
+        .eq('id', request.params.id)
+        .eq('client_id', request.client.id)
+        .single();
 
-/**
- * GET /api/webhooks/deliveries
- * List webhook deliveries
- */
-router.get('/deliveries', requireScope('read'), async (req, res) => {
-  try {
-    const { event_type, status, limit = 50, offset = 0 } = req.query;
+      if (error || !data) {
+        return reply.status(404).send({
+          success: false,
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Webhook delivery not found',
+          },
+        });
+      }
 
-    let query = supabase
-      .from('webhook_deliveries')
-      .select('*', { count: 'exact' })
-      .eq('client_id', req.client.id)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + parseInt(limit) - 1);
-
-    if (event_type) query = query.eq('event_type', event_type);
-    if (status) query = query.eq('status', status);
-
-    const { data, error, count } = await query;
-
-    if (error) {
-      return res.status(400).json({
+      return {
+        success: true,
+        data: data,
+      };
+    } catch (error) {
+      console.error('Get webhook delivery error:', error);
+      return reply.status(500).send({
         success: false,
         error: {
-          code: 'FETCH_WEBHOOK_DELIVERIES_ERROR',
-          message: error.message,
+          code: 'INTERNAL_ERROR',
+          message: 'Failed to get webhook delivery',
         },
       });
     }
+  });
+}
 
-    res.json({
-      success: true,
-      data: data,
-      pagination: {
-        total: count,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-      },
-    });
-  } catch (error) {
-    console.error('List webhook deliveries error:', error);
-    res.status(500).json({
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'Failed to list webhook deliveries',
-      },
-    });
-  }
-});
-
-/**
- * GET /api/webhooks/deliveries/:id
- * Get webhook delivery details
- */
-router.get('/deliveries/:id', requireScope('read'), async (req, res) => {
-  try {
-    const { data, error } = await supabase
-      .from('webhook_deliveries')
-      .select('*')
-      .eq('id', req.params.id)
-      .eq('client_id', req.client.id)
-      .single();
-
-    if (error || !data) {
-      return res.status(404).json({
-        success: false,
-        error: {
-          code: 'NOT_FOUND',
-          message: 'Webhook delivery not found',
-        },
-      });
-    }
-
-    res.json({
-      success: true,
-      data: data,
-    });
-  } catch (error) {
-    console.error('Get webhook delivery error:', error);
-    res.status(500).json({
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'Failed to get webhook delivery',
-      },
-    });
-  }
-});
-
-module.exports = router;
+module.exports = routes;

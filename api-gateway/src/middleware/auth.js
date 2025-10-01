@@ -1,4 +1,5 @@
 const { createClient } = require('@supabase/supabase-js');
+const fp = require('fastify-plugin');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -12,18 +13,18 @@ const supabase = createClient(
 );
 
 /**
- * Authentication middleware
+ * Authentication hook for Fastify
  * Validates API key and attaches client info to request
  */
-async function authenticate(req, res, next) {
+async function authenticate(request, reply) {
   try {
     // Extract API key from header
     const apiKey =
-      req.headers['x-api-key'] ||
-      req.headers['authorization']?.replace('Bearer ', '');
+      request.headers['x-api-key'] ||
+      request.headers['authorization']?.replace('Bearer ', '');
 
     if (!apiKey) {
-      return res.status(401).json({
+      return reply.status(401).send({
         success: false,
         error: {
           code: 'UNAUTHORIZED',
@@ -42,8 +43,8 @@ async function authenticate(req, res, next) {
     );
 
     if (validationError) {
-      console.error('API key validation error:', validationError);
-      return res.status(500).json({
+      request.log.error('API key validation error:', validationError);
+      return reply.status(500).send({
         success: false,
         error: {
           code: 'VALIDATION_ERROR',
@@ -54,7 +55,7 @@ async function authenticate(req, res, next) {
     }
 
     if (!validation || !validation.is_valid) {
-      return res.status(401).json({
+      return reply.status(401).send({
         success: false,
         error: {
           code: 'INVALID_API_KEY',
@@ -69,17 +70,17 @@ async function authenticate(req, res, next) {
       'check_rate_limit',
       {
         p_client_id: validation.client_id,
-        p_endpoint: req.path,
+        p_endpoint: request.url,
         p_limit_per_minute: 60,
       }
     );
 
     if (rateLimitError) {
-      console.error('Rate limit check error:', rateLimitError);
+      request.log.error('Rate limit check error:', rateLimitError);
     }
 
     if (rateLimitCheck && !rateLimitCheck.allowed) {
-      return res.status(429).json({
+      return reply.status(429).send({
         success: false,
         error: {
           code: 'RATE_LIMIT_EXCEEDED',
@@ -89,28 +90,26 @@ async function authenticate(req, res, next) {
       });
     }
 
-    // Log API request
-    await supabase.from('api_request_logs').insert({
+    // Log API request (non-blocking)
+    supabase.from('api_request_logs').insert({
       api_key_id: validation.api_key_id,
       client_id: validation.client_id,
-      method: req.method,
-      endpoint: req.path,
-      ip_address: req.ip,
-      user_agent: req.headers['user-agent'],
-    });
+      method: request.method,
+      endpoint: request.url,
+      ip_address: request.ip,
+      user_agent: request.headers['user-agent'],
+    }).then(() => {}).catch((err) => request.log.error('Failed to log API request:', err));
 
     // Attach client info to request
-    req.client = {
+    request.client = {
       id: validation.client_id,
       name: validation.client_name,
       scopes: validation.scopes || [],
       api_key_id: validation.api_key_id,
     };
-
-    next();
   } catch (error) {
-    console.error('Authentication error:', error);
-    return res.status(500).json({
+    request.log.error('Authentication error:', error);
+    return reply.status(500).send({
       success: false,
       error: {
         code: 'AUTH_ERROR',
@@ -125,9 +124,9 @@ async function authenticate(req, res, next) {
  * Check if client has required scope
  */
 function requireScope(scope) {
-  return (req, res, next) => {
-    if (!req.client) {
-      return res.status(401).json({
+  return async (request, reply) => {
+    if (!request.client) {
+      return reply.status(401).send({
         success: false,
         error: {
           code: 'UNAUTHORIZED',
@@ -137,8 +136,8 @@ function requireScope(scope) {
       });
     }
 
-    if (!req.client.scopes.includes(scope) && !req.client.scopes.includes('*')) {
-      return res.status(403).json({
+    if (!request.client.scopes.includes(scope) && !request.client.scopes.includes('*')) {
+      return reply.status(403).send({
         success: false,
         error: {
           code: 'FORBIDDEN',
@@ -147,13 +146,23 @@ function requireScope(scope) {
         timestamp: new Date().toISOString(),
       });
     }
-
-    next();
   };
 }
 
-module.exports = {
-  authenticate,
-  requireScope,
-  supabase,
-};
+/**
+ * Fastify plugin to register authentication
+ */
+async function authPlugin(fastify, options) {
+  fastify.decorate('authenticate', authenticate);
+  fastify.decorate('requireScope', requireScope);
+  fastify.decorate('supabase', supabase);
+}
+
+module.exports = fp(authPlugin, {
+  name: 'auth-plugin',
+  fastify: '4.x'
+});
+
+module.exports.authenticate = authenticate;
+module.exports.requireScope = requireScope;
+module.exports.supabase = supabase;

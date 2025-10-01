@@ -30,7 +30,7 @@ Complete Banking-as-a-Service (BaaS) platform with PIX payments, TED transfers, 
     └────┬─────┘
          │
   ┌──────▼───────────┐
-  │   API Gateway    │ (Node.js + Express, Port 8000)
+  │   API Gateway    │ (Node.js + Fastify, Port 8000)
   │                  │
   │  - Authentication│
   │  - Rate Limiting │
@@ -82,11 +82,11 @@ Complete Banking-as-a-Service (BaaS) platform with PIX payments, TED transfers, 
 
 ### API Gateway
 - **Node.js 18+**: Runtime environment
-- **Express.js**: Web framework
+- **Fastify**: High-performance web framework
 - **Swagger UI**: API documentation
-- **Helmet**: Security headers
-- **Morgan**: HTTP request logging
-- **Express Rate Limit**: Rate limiting middleware
+- **Fastify Helmet**: Security headers
+- **Pino**: Ultra-fast logging
+- **Fastify Rate Limit**: Rate limiting middleware
 
 ### Backend Infrastructure
 - **Supabase**: Backend-as-a-Service

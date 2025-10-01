@@ -1,0 +1,1735 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "ZyvoPay API Gateway",
+    "description": "ZyvoPay Payment Gateway API - Complete banking-as-a-service platform for PIX payments, TED transfers, and financial operations.\n\n## Authentication\nAll endpoints (except `/health` and `/api/auth/clients`) require API Key authentication.\n\nProvide your API key via:\n- `X-API-Key` header, or\n- `Authorization: Bearer <api_key>` header\n\n## Rate Limiting\n- Default: 60 requests per minute per API key\n- Rate limit headers are returned in responses\n\n## Webhooks\nConfigure your webhook URL in the client settings to receive real-time event notifications.\n",
+    "version": "1.0.0",
+    "contact": {
+      "name": "ZyvoPay Support",
+      "email": "support@zyvopay.com"
+    },
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000",
+      "description": "Development server"
+    },
+    {
+      "url": "https://api.zyvopay.com",
+      "description": "Production server"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Auth",
+      "description": "Authentication and API key management"
+    },
+    {
+      "name": "Subaccounts",
+      "description": "Subaccount management (restaurants, merchants)"
+    },
+    {
+      "name": "PIX",
+      "description": "PIX keys, payments, and QR codes"
+    },
+    {
+      "name": "TED",
+      "description": "TED wire transfers"
+    },
+    {
+      "name": "Transactions",
+      "description": "Transaction history and statements"
+    },
+    {
+      "name": "Splits",
+      "description": "Split payment rules for marketplaces"
+    },
+    {
+      "name": "Scheduled",
+      "description": "Scheduled transfers"
+    },
+    {
+      "name": "Recurring",
+      "description": "Recurring payments and subscriptions"
+    },
+    {
+      "name": "Documents",
+      "description": "Document upload and KYC"
+    },
+    {
+      "name": "Backups",
+      "description": "Transaction backup files"
+    },
+    {
+      "name": "Webhooks",
+      "description": "Webhook configuration and delivery logs"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key"
+      },
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "example": "VALIDATION_ERROR"
+              },
+              "message": {
+                "type": "string",
+                "example": "Missing required fields"
+              }
+            }
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Pagination": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          }
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "ApiKeyAuth": []
+    },
+    {
+      "BearerAuth": []
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health check",
+        "tags": [
+          "Auth"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Service is healthy"
+          }
+        }
+      }
+    },
+    "/api/auth/clients": {
+      "post": {
+        "summary": "Create client account",
+        "tags": [
+          "Auth"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "document",
+                  "email"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "legal_name": {
+                    "type": "string"
+                  },
+                  "document": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "phone": {
+                    "type": "string"
+                  },
+                  "webhook_url": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Client created successfully"
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "summary": "Get current client info",
+        "tags": [
+          "Auth"
+        ],
+        "responses": {
+          "200": {
+            "description": "Client information retrieved"
+          }
+        }
+      }
+    },
+    "/api/auth/api-keys": {
+      "post": {
+        "summary": "Generate new API key",
+        "tags": [
+          "Auth"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "scopes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "example": [
+                      "read",
+                      "write"
+                    ]
+                  },
+                  "expires_in_days": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "API key generated"
+          }
+        }
+      },
+      "get": {
+        "summary": "List API keys",
+        "tags": [
+          "Auth"
+        ],
+        "responses": {
+          "200": {
+            "description": "List of API keys"
+          }
+        }
+      }
+    },
+    "/api/auth/api-keys/{id}": {
+      "delete": {
+        "summary": "Revoke API key",
+        "tags": [
+          "Auth"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "API key revoked"
+          }
+        }
+      }
+    },
+    "/api/subaccounts": {
+      "post": {
+        "summary": "Create subaccount",
+        "tags": [
+          "Subaccounts"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "account_type",
+                  "owner_name",
+                  "owner_document"
+                ],
+                "properties": {
+                  "account_type": {
+                    "type": "string",
+                    "enum": [
+                      "PF",
+                      "PJ"
+                    ]
+                  },
+                  "owner_name": {
+                    "type": "string"
+                  },
+                  "owner_document": {
+                    "type": "string"
+                  },
+                  "owner_email": {
+                    "type": "string"
+                  },
+                  "owner_phone": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Subaccount created"
+          }
+        }
+      },
+      "get": {
+        "summary": "List subaccounts",
+        "tags": [
+          "Subaccounts"
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "account_type",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "PF",
+                "PJ"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of subaccounts"
+          }
+        }
+      }
+    },
+    "/api/subaccounts/{id}": {
+      "get": {
+        "summary": "Get subaccount details",
+        "tags": [
+          "Subaccounts"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Subaccount details"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update subaccount",
+        "tags": [
+          "Subaccounts"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "daily_pix_limit_cents": {
+                    "type": "integer"
+                  },
+                  "daily_ted_limit_cents": {
+                    "type": "integer"
+                  },
+                  "metadata": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Subaccount updated"
+          }
+        }
+      }
+    },
+    "/api/subaccounts/{id}/balance": {
+      "get": {
+        "summary": "Get subaccount balance",
+        "tags": [
+          "Subaccounts"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Balance information"
+          }
+        }
+      }
+    },
+    "/api/pix/keys": {
+      "post": {
+        "summary": "Register PIX key",
+        "tags": [
+          "PIX"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "subaccount_id",
+                  "key_type",
+                  "key_value"
+                ],
+                "properties": {
+                  "subaccount_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "key_type": {
+                    "type": "string",
+                    "enum": [
+                      "CPF",
+                      "CNPJ",
+                      "EMAIL",
+                      "PHONE",
+                      "EVP"
+                    ]
+                  },
+                  "key_value": {
+                    "type": "string"
+                  },
+                  "is_default": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "PIX key registered"
+          }
+        }
+      },
+      "get": {
+        "summary": "List PIX keys",
+        "tags": [
+          "PIX"
+        ],
+        "parameters": [
+          {
+            "name": "subaccount_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of PIX keys"
+          }
+        }
+      }
+    },
+    "/api/pix/keys/{id}": {
+      "delete": {
+        "summary": "Delete PIX key",
+        "tags": [
+          "PIX"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PIX key deleted"
+          }
+        }
+      }
+    },
+    "/api/pix/payments": {
+      "post": {
+        "summary": "Create PIX payment",
+        "tags": [
+          "PIX"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "subaccount_id",
+                  "pix_key",
+                  "pix_key_type",
+                  "amount_cents"
+                ],
+                "properties": {
+                  "subaccount_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "pix_key": {
+                    "type": "string"
+                  },
+                  "pix_key_type": {
+                    "type": "string",
+                    "enum": [
+                      "CPF",
+                      "CNPJ",
+                      "EMAIL",
+                      "PHONE",
+                      "EVP"
+                    ]
+                  },
+                  "amount_cents": {
+                    "type": "integer"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "client_request_id": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "PIX payment created"
+          }
+        }
+      }
+    },
+    "/api/pix/payments/{id}": {
+      "get": {
+        "summary": "Get PIX payment status",
+        "tags": [
+          "PIX"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Payment status"
+          }
+        }
+      }
+    },
+    "/api/pix/qrcodes": {
+      "post": {
+        "summary": "Generate PIX QR Code",
+        "tags": [
+          "PIX"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "subaccount_id",
+                  "qr_type"
+                ],
+                "properties": {
+                  "subaccount_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "qr_type": {
+                    "type": "string",
+                    "enum": [
+                      "static",
+                      "dynamic"
+                    ]
+                  },
+                  "amount_cents": {
+                    "type": "integer"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "expires_in_minutes": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "QR code generated"
+          }
+        }
+      },
+      "get": {
+        "summary": "List QR codes",
+        "tags": [
+          "PIX"
+        ],
+        "parameters": [
+          {
+            "name": "subaccount_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "qr_type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "is_active",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of QR codes"
+          }
+        }
+      }
+    },
+    "/api/pix/qrcodes/{id}": {
+      "get": {
+        "summary": "Get QR code details",
+        "tags": [
+          "PIX"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "QR code details"
+          }
+        }
+      }
+    },
+    "/api/ted/transfers": {
+      "post": {
+        "summary": "Create TED transfer",
+        "tags": [
+          "TED"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "subaccount_id",
+                  "bank_code",
+                  "branch",
+                  "account_number",
+                  "beneficiary_name",
+                  "beneficiary_document",
+                  "amount_cents"
+                ],
+                "properties": {
+                  "subaccount_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "bank_code": {
+                    "type": "string"
+                  },
+                  "branch": {
+                    "type": "string"
+                  },
+                  "account_number": {
+                    "type": "string"
+                  },
+                  "account_type": {
+                    "type": "string"
+                  },
+                  "beneficiary_name": {
+                    "type": "string"
+                  },
+                  "beneficiary_document": {
+                    "type": "string"
+                  },
+                  "amount_cents": {
+                    "type": "integer"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "TED transfer created"
+          }
+        }
+      }
+    },
+    "/api/transactions": {
+      "get": {
+        "summary": "List transactions",
+        "tags": [
+          "Transactions"
+        ],
+        "parameters": [
+          {
+            "name": "subaccount_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "transaction_type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of transactions"
+          }
+        }
+      }
+    },
+    "/api/transactions/{id}": {
+      "get": {
+        "summary": "Get transaction details",
+        "tags": [
+          "Transactions"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Transaction details"
+          }
+        }
+      }
+    },
+    "/api/transactions/statement/{subaccount_id}": {
+      "get": {
+        "summary": "Get account statement",
+        "tags": [
+          "Transactions"
+        ],
+        "parameters": [
+          {
+            "name": "subaccount_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Account statement"
+          }
+        }
+      }
+    },
+    "/api/splits": {
+      "post": {
+        "summary": "Create split rule",
+        "tags": [
+          "Splits"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "recipients"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "recipients": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Split rule created"
+          }
+        }
+      },
+      "get": {
+        "summary": "List split rules",
+        "tags": [
+          "Splits"
+        ],
+        "parameters": [
+          {
+            "name": "is_active",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of split rules"
+          }
+        }
+      }
+    },
+    "/api/splits/{id}": {
+      "get": {
+        "summary": "Get split rule",
+        "tags": [
+          "Splits"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Split rule details"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update split rule",
+        "tags": [
+          "Splits"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "recipients": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "is_active": {
+                    "type": "boolean"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Split rule updated"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete split rule",
+        "tags": [
+          "Splits"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Split rule deleted"
+          }
+        }
+      }
+    },
+    "/api/scheduled": {
+      "post": {
+        "summary": "Create scheduled transfer",
+        "tags": [
+          "Scheduled"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "subaccount_id",
+                  "transfer_type",
+                  "amount_cents",
+                  "scheduled_date"
+                ],
+                "properties": {
+                  "subaccount_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "transfer_type": {
+                    "type": "string"
+                  },
+                  "pix_key": {
+                    "type": "string"
+                  },
+                  "pix_key_type": {
+                    "type": "string"
+                  },
+                  "ted_bank_code": {
+                    "type": "string"
+                  },
+                  "ted_agency": {
+                    "type": "string"
+                  },
+                  "ted_account": {
+                    "type": "string"
+                  },
+                  "amount_cents": {
+                    "type": "integer"
+                  },
+                  "scheduled_date": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "scheduled_time": {
+                    "type": "string",
+                    "format": "time"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Scheduled transfer created"
+          }
+        }
+      },
+      "get": {
+        "summary": "List scheduled transfers",
+        "tags": [
+          "Scheduled"
+        ],
+        "parameters": [
+          {
+            "name": "subaccount_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of scheduled transfers"
+          }
+        }
+      }
+    },
+    "/api/scheduled/{id}": {
+      "delete": {
+        "summary": "Cancel scheduled transfer",
+        "tags": [
+          "Scheduled"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scheduled transfer cancelled"
+          }
+        }
+      }
+    },
+    "/api/recurring": {
+      "post": {
+        "summary": "Create recurring payment",
+        "tags": [
+          "Recurring"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "subaccount_id",
+                  "pix_key",
+                  "pix_key_type",
+                  "frequency",
+                  "amount_cents",
+                  "start_date"
+                ],
+                "properties": {
+                  "subaccount_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "pix_key": {
+                    "type": "string"
+                  },
+                  "pix_key_type": {
+                    "type": "string"
+                  },
+                  "frequency": {
+                    "type": "string",
+                    "enum": [
+                      "daily",
+                      "weekly",
+                      "monthly",
+                      "yearly"
+                    ]
+                  },
+                  "amount_cents": {
+                    "type": "integer"
+                  },
+                  "start_date": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "end_date": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Recurring payment created"
+          }
+        }
+      },
+      "get": {
+        "summary": "List recurring payments",
+        "tags": [
+          "Recurring"
+        ],
+        "parameters": [
+          {
+            "name": "subaccount_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "is_active",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of recurring payments"
+          }
+        }
+      }
+    },
+    "/api/recurring/{id}": {
+      "patch": {
+        "summary": "Update recurring payment",
+        "tags": [
+          "Recurring"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "is_active": {
+                    "type": "boolean"
+                  },
+                  "end_date": {
+                    "type": "string",
+                    "format": "date"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Recurring payment updated"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Cancel recurring payment",
+        "tags": [
+          "Recurring"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recurring payment cancelled"
+          }
+        }
+      }
+    },
+    "/api/documents": {
+      "post": {
+        "summary": "Upload document",
+        "tags": [
+          "Documents"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "document_type",
+                  "file_name",
+                  "file_base64",
+                  "mime_type"
+                ],
+                "properties": {
+                  "subaccount_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "document_type": {
+                    "type": "string"
+                  },
+                  "file_name": {
+                    "type": "string"
+                  },
+                  "file_base64": {
+                    "type": "string"
+                  },
+                  "mime_type": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Document uploaded"
+          }
+        }
+      },
+      "get": {
+        "summary": "List documents",
+        "tags": [
+          "Documents"
+        ],
+        "parameters": [
+          {
+            "name": "subaccount_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "document_type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of documents"
+          }
+        }
+      }
+    },
+    "/api/documents/{id}": {
+      "get": {
+        "summary": "Get document details",
+        "tags": [
+          "Documents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Document details"
+          }
+        }
+      }
+    },
+    "/api/documents/{id}/download": {
+      "get": {
+        "summary": "Download document",
+        "tags": [
+          "Documents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Document download URL"
+          }
+        }
+      }
+    },
+    "/api/backups": {
+      "get": {
+        "summary": "List transaction backups",
+        "tags": [
+          "Backups"
+        ],
+        "parameters": [
+          {
+            "name": "backup_type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of backups"
+          }
+        }
+      }
+    },
+    "/api/backups/{id}": {
+      "get": {
+        "summary": "Get backup details",
+        "tags": [
+          "Backups"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Backup details"
+          }
+        }
+      }
+    },
+    "/api/backups/{id}/download": {
+      "get": {
+        "summary": "Download backup file",
+        "tags": [
+          "Backups"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Backup download URL"
+          }
+        }
+      }
+    },
+    "/api/webhooks/config": {
+      "patch": {
+        "summary": "Update webhook configuration",
+        "tags": [
+          "Webhooks"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "webhook_url"
+                ],
+                "properties": {
+                  "webhook_url": {
+                    "type": "string"
+                  },
+                  "webhook_secret": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Webhook configuration updated"
+          }
+        }
+      }
+    },
+    "/api/webhooks/deliveries": {
+      "get": {
+        "summary": "List webhook deliveries",
+        "tags": [
+          "Webhooks"
+        ],
+        "parameters": [
+          {
+            "name": "event_type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of webhook deliveries"
+          }
+        }
+      }
+    },
+    "/api/webhooks/deliveries/{id}": {
+      "get": {
+        "summary": "Get webhook delivery details",
+        "tags": [
+          "Webhooks"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Webhook delivery details"
+          }
+        }
+      }
+    }
+  }
+}
